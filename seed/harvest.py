@@ -143,6 +143,11 @@ def main():
     except AttributeError:
         gap = max(a.gap, GAP_BY_SOURCE.get(a.source, 0))
 
+    first = f"data/seed_{a.source}_s0.sqlite"
+    if nshard > 1 and shard > 0 and not con.execute("select count(*) from store_pages").fetchone()[0] and __import__("os").path.exists(first):
+        # Shards share shard 0's store list, since a sitemap fetched through a proxy can fail and leave a shard empty.
+        con.executemany("insert or ignore into store_pages values (?, ?)", sqlite3.connect(first).execute("select url, listed from store_pages"))
+        con.commit()
     if not con.execute("select count(*) from store_pages").fetchone()[0]:
         pages = sitemap_pages(base, roots, pattern, gap, rp)
         pages += [f"{base}/shop/{slug}" for slug in SEEDS.get(a.source, [])]
