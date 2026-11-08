@@ -6,8 +6,8 @@ no new tab, and no ads.
 
 ## Privacy
 
-- The extension downloads the whole code database at once and looks a store up in the browser, so no request names the
-  site being visited.
+- The extension downloads the whole code database at once (once a day, from https://bryceaspringfield.github.io/open-coupons/data/codes.json)
+  and looks a store up in the browser, so no request names the site being visited.
 - It collects no personal, browsing, or ad data, and it swaps no affiliate cookies.
 - Its only upload: after a code the user typed works and is missing from the database, it asks whether to share the code,
   and a share sends the store and the code alone. Shares wait in a local queue until a receiving endpoint is approved
@@ -18,7 +18,7 @@ no new tab, and no ads.
 | Folder | Holds |
 |---|---|
 | `extension/` | the extension: `manifest.json` (Manifest V3, Firefox and Chrome), `background.js` (database and shares), `content.js` (the trial run and the share prompt), `lib/platforms.js` (coupon-field selectors by store and platform, and a generic field search), `popup.*`, `data/codes.json` (the bundled database) |
-| `site/` | the static search page (`index.html`) and its copy of `data/codes.json` |
+| `site/` | the static search page (`index.html`, served at https://bryceaspringfield.github.io/open-coupons/ and kept out of search engines) and its copy of `data/codes.json` |
 | `seed/` | the seed bank: `probe_sources.py` (robots.txt and terms of each source), `harvest.py` (one source's store pages into `data/seed_<source>.sqlite`), `extract.py` (the generic code extractor), `build_db.py` (the merge into `codes.json`) |
 | `tests/` | mock checkout pages and `run_tests.py`, an end-to-end run in headless Chromium (`sbatch tests/run_tests.sbatch`) |
 

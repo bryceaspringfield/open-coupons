@@ -2,8 +2,8 @@
 // The whole database is downloaded at once and looked up in the browser, so no request names the site being visited.
 const api = globalThis.browser ?? globalThis.chrome;
 
-// The published database (one JSON file, the same for every user). Empty until the code site is public; the bundled copy serves until then.
-const DB_URL = "";
+// The published database (one JSON file, the same for every user), refreshed once a day; the bundled copy serves when offline.
+const DB_URL = "https://bryceaspringfield.github.io/open-coupons/data/codes.json";
 // Where an agreed share goes (a POST of {store, code}). Empty until a receiving endpoint is approved; shares wait in a local queue.
 const SHARE_ENDPOINT = "";
 const REFRESH_MS = 24 * 3600 * 1000;
