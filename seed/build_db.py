@@ -2,8 +2,8 @@
 """Merges data/seed_<source>.sqlite (and data/shared_codes.tsv, the codes users chose to share) into one code database.
 
 Writes extension/data/codes.json (bundled with the extension) and site/data/codes.json (read by the search page), and
-prints one line of counts per source. A store page known only by its slug ("slug:nike") is kept when exactly one store key
-from another source starts with that slug's label (nike -> nike.com). Codes past their expiry date are dropped.
+prints one line of counts per source. A store page known only by its slug ("slug:nike") takes the one store key from another
+source whose first label is that slug (nike -> nike.com), else <slug>.com; a slug matching several keys is dropped. Codes past their expiry date are dropped.
 """
 import collections
 import datetime
@@ -84,10 +84,15 @@ def main():
     for src, key, code, desc, seen in rows:
         if key.startswith("slug:"):
             cands = by_label.get(key[5:].replace("-", ""), set()) | by_label.get(key[5:], set())
-            if len(cands) != 1:
-                stats[src, "slug unresolved"] += 1
+            if len(cands) == 1:
+                key = next(iter(cands))
+            elif not cands:
+                # No other source names the store: take <slug>.com, since a wrong guess only means its codes fail at checkout.
+                key = key[5:].replace("-", "") + ".com"
+                stats[src, "slug guessed .com"] += 1
+            else:
+                stats[src, "slug ambiguous"] += 1
                 continue
-            key = next(iter(cands))
         rec = stores[key].setdefault(code.upper(), {"c": code, "d": None, "s": [], "seen": seen})
         if src not in rec["s"]:
             rec["s"].append(src)

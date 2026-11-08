@@ -36,6 +36,9 @@ SEEDS = {"honey": ["nike", "target", "amazon", "walmart", "bestbuy", "macys", "s
                    "lowes", "homedepot", "etsy", "chewy", "gap", "oldnavy", "nordstrom", "expedia", "hotels-com"]}
 LINK_RX = re.compile(r'(?:https://www\.joinhoney\.com)?/shop/([a-z0-9][a-z0-9-]*)(?=["/?\\])')
 NOT_STORE_SLUGS = {"share", "p"}
+# CouponFollow's CDN answered 406 to 80 of 148 pages at 3 s apart (2026-11-08); it gets 6 s.
+GAP_BY_SOURCE = {"couponfollow": 6.0}
+MAX_REFUSALS = 10
 
 
 def get(url, timeout=45):
@@ -98,15 +101,18 @@ def main():
     st, body = get(base + "/robots.txt")
     rp.parse(body.decode("utf-8", "replace").splitlines() if st == 200 else [])
     try:
-        gap = max(a.gap, float(rp.crawl_delay("*") or 0))
+        gap = max(a.gap, GAP_BY_SOURCE.get(a.source, 0), float(rp.crawl_delay("*") or 0))
     except AttributeError:
-        gap = a.gap
+        gap = max(a.gap, GAP_BY_SOURCE.get(a.source, 0))
 
     if not con.execute("select count(*) from store_pages").fetchone()[0]:
         pages = sitemap_pages(base, roots, pattern, gap, rp)
         pages += [f"{base}/shop/{slug}" for slug in SEEDS.get(a.source, [])]
         con.executemany("insert or ignore into store_pages values (?, ?)", [(u, time.time()) for u in pages])
         con.commit()
+    # A page answered with a refusal (403, 406, 429) or an error is retried on the next run.
+    con.execute("delete from pages_done where status not in (200, 404, 410)")
+    con.commit()
     todo = [u for (u,) in con.execute("select url from store_pages where url not in (select url from pages_done) order by url")]
     total = con.execute("select count(*) from store_pages").fetchone()[0]
     print(f"{a.source}: {total} store pages, {len(todo)} to fetch, gap {gap} s", flush=True)
@@ -125,13 +131,14 @@ def main():
         i = con.execute("select count(*) from pages_done").fetchone()[0]
         time.sleep(gap)
         st, body = get(url)
-        if st in (403, 429):
+        if st in (403, 406, 429):
+            # A refusal is left out of pages_done, so the next run retries it; ten in a row end this run.
             refusals += 1
             print(f"refused {st} at {url}", flush=True)
-            if refusals >= 3:
-                print("stopping: three refusals", flush=True)
+            if refusals >= MAX_REFUSALS:
+                print(f"stopping: {MAX_REFUSALS} refusals in a row", flush=True)
                 break
-            time.sleep(60 * refusals)
+            time.sleep(30 * refusals)
             continue
         refusals = 0
         html = body.decode("utf-8", "replace") if st == 200 else ""
