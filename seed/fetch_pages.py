@@ -20,7 +20,17 @@ UA = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 lock = threading.Lock()
 
 
+IMPERSONATE = None  # set by --impersonate: curl_cffi with that browser's TLS fingerprint, since some sites refuse urllib's
+
+
 def get(url, timeout=40):
+    if IMPERSONATE:
+        from curl_cffi import requests as creq
+        try:
+            r = creq.get(url, impersonate=IMPERSONATE, timeout=timeout)
+            return r.status_code, r.content[:8_000_000]
+        except Exception as e:
+            return -1, str(e).encode()[:300]
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html,application/json;q=0.9,*/*;q=0.8",
                                                "Accept-Language": "en-US,en;q=0.8"})
     try:
@@ -64,7 +74,10 @@ def main():
     ap.add_argument("urls")
     ap.add_argument("out")
     ap.add_argument("--gap", type=float, default=3.0)
+    ap.add_argument("--impersonate", default=None, help="safari or chrome")
     a = ap.parse_args()
+    global IMPERSONATE
+    IMPERSONATE = a.impersonate
     con = sqlite3.connect(a.out)
     con.execute("create table if not exists pages (url text primary key, status int, fetched real, body blob)")
     have = {u for (u,) in con.execute("select url from pages where status = 200")}

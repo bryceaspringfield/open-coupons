@@ -45,11 +45,16 @@ robots.txt does not gate the harvest (a standing ruling, 2026-11-08); each site'
 | CouponFollow | yes | each offer's code is base64 of numbers XORed with a key in the site's tracking script (`CF_KEY` in `seed/extract.py`) |
 | Coupons.com | yes | store pages embed codes with expiry dates |
 | PromoCodes.com | yes | store pages embed codes |
-| Groupon | no | its terms forbid crawlers, robots, and data mining |
-| RetailMeNot, Dealspotr, Knoji, SimplyCodes, CouponCabin | no | each refused our requests (403) |
+| SimplyCodes (also serving Dealspotr and Knoji) | yes | each code's button (`data-code`), kept only where `data-merchant-url` names the page's store |
+| RetailMeNot | yes | each code offer's dialog (`/modals/outclick/<offer>`), one request an offer |
+| Groupon | yes | each code offer's redemption call (`/coupons-ui/api/redemption/<offer>`), one request an offer |
+| CouponCabin | no | its Cloudflare check refused every client tried, a headed browser with stealth patches included |
 | Offers.com, Savings.com, DealNews, Rakuten | no | no codes in the page markup |
 
-Requests go out from one address, one at a time a site, 3 s apart.
+Requests go out one at a time an address, 3 s apart (6 s for CouponFollow). SimplyCodes, RetailMeNot, and Groupon refuse
+Python's TLS fingerprint, so they get curl_cffi's Safari one; RetailMeNot runs across 8 egresses and Groupon across 4
+(`--egress`, `--shard`), each writing its own `data/seed_<source>_s<shard>.sqlite`. `tools/egress_grid.py` tests a site
+through every egress and client.
 
 ## Testing
 

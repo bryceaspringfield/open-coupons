@@ -19,6 +19,10 @@ SOURCE_URLS = {
     "capital_one_shopping": "https://capitaloneshopping.com",
     "coupons_com": "https://www.coupons.com",
     "promocodes_com": "https://www.promocodes.com",
+    "simplycodes": "https://simplycodes.com",
+    "retailmenot": "https://www.retailmenot.com",
+    "groupon": "https://www.groupon.com/coupons",
+    "couponfollow": "https://couponfollow.com",
     "shared": "codes users of the extension chose to share",
 }
 
@@ -59,7 +63,7 @@ def main():
     today = datetime.date.today().isoformat()
     rows, stats = [], collections.Counter()
     for path in sorted(glob.glob(os.path.join(ROOT, "data", "seed_*.sqlite"))):
-        src = re.match(r"seed_(.+)\.sqlite", os.path.basename(path)).group(1)
+        src = re.match(r"seed_(.+?)(?:_s\d+)?\.sqlite", os.path.basename(path)).group(1)
         con = sqlite3.connect(path)
         for key, code, desc, page, seen, extra in con.execute("select store_key, code, description, page_url, seen, extra from codes"):
             exp = re.search(r"expires=(\d{4}-\d{2}-\d{2})", extra or "")

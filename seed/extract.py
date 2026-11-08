@@ -19,6 +19,9 @@ DESC_RX = re.compile(r'"(description|generatedDescription|title|headline|offerTe
 # CouponFollow's offer props hold each code as base64 of comma-separated numbers, XORed with the key in its tracking module
 # (encryption.*.js imports it from tracking.*.js; read 2026-11-08). A changed key decodes to non-code text, which code_ok rejects.
 CF_KEY = "ffGndlgFCNFyjAx"
+# SimplyCodes (also serving Dealspotr and Knoji) puts each code on its button: data-code, data-title, data-description.
+SC_TAG_RX = re.compile(r'<button\b[^>]*\bdata-code="([^"]{2,40})"[^>]*>', re.S)
+SC_ATTR_RX = re.compile(r'data-(title|description|merchant-url)="([^"]{0,300})"')
 # Capital One Shopping lists codes in a table: a Description cell, then a Code cell whose first button shows the code.
 COS_ROW_RX = re.compile(r'<td data-label="Description"[^>]*>(.*?)</td>\s*<td data-label="Code"[^>]*>\s*<button[^>]*>\s*([^<\s]{2,32})\s*<', re.S)
 CF_PROP_RX = re.compile(r'"isExpired":\[0,(true|false)\].{0,1500}?"title":\[0,"([^"]{0,300})"\].{0,3000}?"code":\[0,"([A-Za-z0-9+/=]{4,200})"\]', re.S)
@@ -80,7 +83,51 @@ def nearest(rx, text, pos, span=1500):
     return best[1] if best else None
 
 
-def extract(html, source=""):
+RMN_OFFER_RX = re.compile(r"'offerType': 'COUPON', 'requestSlug': '([^']+)', 'offerUuid': '([A-Z0-9]+)'")
+RMN_CODE_RX = re.compile(r"data-qa=\"el:copyCode\"[^>]*navigator\.clipboard\.writeText\('([^']{2,40})'\)")
+GP_OFFER_RX = re.compile(r'"offerType":\[0,"OnlineCode"\],"offerId":\[0,(\d+)\].{0,400}?"merchantName":\[0,"([^"]+)"\]', re.S)
+
+
+def reveals(html, source, base):
+    """The reveal requests a store page needs: RetailMeNot's code dialog and Groupon's redemption call, one an offer."""
+    if source == "retailmenot":
+        return [(f"{base}/modals/outclick/{u}?template=merchant&trigger=entrance_modal", slug)
+                for slug, u in dict.fromkeys(RMN_OFFER_RX.findall(html_unescape(html)))]
+    if source == "groupon":
+        return [(f"{base}/coupons-ui/api/redemption/{oid}?merchant={urllib.parse.quote(name)}&linkType=web", name)
+                for oid, name in dict.fromkeys(GP_OFFER_RX.findall(html_unescape(html)))]
+    return []
+
+
+def explicit_ok(c):
+    """A code read from a field naming it a code: any code-shaped string, lowercase words included (Groupon's "levelup")."""
+    return bool(CODE_OK_RX.match(c)) and c.upper() not in STOP
+
+
+def reveal_code(source, body):
+    """Reads one reveal answer: {code, description, extra, store_host}, or None when it holds no code."""
+    import json
+    try:
+        d = json.loads(body)
+    except ValueError:
+        return None
+    if source == "retailmenot":
+        m = RMN_CODE_RX.search(d.get("modalHtml", ""))
+        c = m.group(1).strip() if m else ""
+        return {"code": c, "description": None, "extra": None, "store_host": None} if c.lower() != "activated" and explicit_ok(c) else None
+    if source == "groupon":
+        r = d.get("RedemptionResult") or {}
+        c = (r.get("OfferCode") or "").strip()
+        if not explicit_ok(c):
+            return None
+        exp = (r.get("ExpiryDateTime") or "")[:10]
+        return {"code": c, "description": clean(r.get("OfferTitle")), "extra": f"expires={exp}" if exp else None,
+                "store_host": r.get("WebsiteName")}
+    return None
+
+
+def extract(html, source="", store=None):
+    """store: the page's own store key, where known; codes another store's button names are dropped."""
     text = unescape(html)
     codes = {}
     for m in CODE_KEY_RX.finditer(text):
@@ -93,6 +140,15 @@ def extract(html, source=""):
         d = nearest(DESC_RX, text, m.start())
         e = nearest(EXPIRY_RX, text, m.start(), 900)
         codes.setdefault(c, {"code": c, "description": clean(d.group(2)) if d else None, "extra": f"expires={e.group(2)}" if e else None})
+    if source == "simplycodes":
+        for m in SC_TAG_RX.finditer(html):
+            c = html_unescape(m.group(1)).strip()
+            if code_ok(c):
+                attrs = dict(SC_ATTR_RX.findall(m.group(0)))
+                murl = attrs.get("merchant-url")
+                if store and murl and store_key(urllib.parse.urlsplit(murl).netloc or murl) != store:
+                    continue  # a related store's code, listed further down the page
+                codes.setdefault(c, {"code": c, "description": clean(attrs.get("description") or attrs.get("title"))})
     if source == "capital_one_shopping":
         for m in COS_ROW_RX.finditer(html):
             c = m.group(2).strip()
@@ -119,8 +175,9 @@ if __name__ == "__main__":
     import sqlite3
     con = sqlite3.connect(sys.argv[1])
     for url, body in con.execute("select url, body from pages where status=200 and url not like '%robots%' and url not like '%terms%' and url not like '%sitemap%'"):
-        src = "honey" if "joinhoney" in url else "couponfollow" if "couponfollow" in url else "capital_one_shopping" if "capitalone" in url else ""
-        r = extract(body.decode("utf-8", "replace"), src)
+        src = "honey" if "joinhoney" in url else "couponfollow" if "couponfollow" in url else "capital_one_shopping" if "capitalone" in url else "simplycodes" if "simplycodes" in url else ""
+        m = re.search(r"/(?:store|site|s)/([^/]+\.[a-z.]+)", url)
+        r = extract(body.decode("utf-8", "replace"), src, store_key(m.group(1)) if m else None)
         print(f"{len(r['codes']):>3} codes  store={r['store_host']}  sel={len(r['selectors'])}  {url}")
         for c in r["codes"][:6]:
             print(f"      {c['code']:<16} {(c['description'] or '')[:90]}")
