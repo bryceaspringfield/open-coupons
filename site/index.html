@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Open Coupons: search coupon codes</title>
+<style>
+  :root { --fg: #1a1a1a; --bg: #fff; --muted: #555; --line: #e3e3e3; --accent: #1f6f43; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #eee; --bg: #161616; --muted: #aaa; --line: #333; --accent: #4fbf80; } }
+  body { font: 16px/1.5 system-ui, sans-serif; color: var(--fg); background: var(--bg); max-width: 880px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 22px; margin: 8px 0; }
+  input[type=search] { font: inherit; width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--muted); border-radius: 8px; background: var(--bg); color: var(--fg); }
+  .m { color: var(--muted); font-size: 14px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { text-align: left; padding: 6px 4px; border-top: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; color: var(--muted); font-weight: 600; }
+  td.code { font-family: ui-monospace, monospace; font-weight: 700; white-space: nowrap; }
+  button { font: inherit; font-size: 13px; border: 1px solid var(--muted); border-radius: 6px; background: transparent; color: var(--fg); padding: 2px 8px; cursor: pointer; }
+  details { margin-top: 20px; }
+</style>
+</head>
+<body>
+  <h1>Open Coupons</h1>
+  <p class="m">Coupon codes for online stores, open to search. No account, no ads, and no tracking: the whole database loads into this page and the search runs in your browser.</p>
+  <input type="search" id="q" placeholder="Store (e.g., nike.com) or code" autofocus aria-label="Search stores and codes">
+  <p class="m" id="status">Loading the database...</p>
+  <table id="out" hidden>
+    <thead><tr><th>Store</th><th>Code</th><th>Offer</th><th>Listed by</th><th>Last seen</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <details>
+    <summary>Sources and privacy</summary>
+    <p class="m">Each code records the sites listing it and the date we last saw it there. The browser extension tries a store's codes at checkout and keeps the one giving the lowest total. The extension sends nothing on its own; when a code you typed works and is missing here, it asks whether to share that code, and sharing sends the store and the code alone.</p>
+    <p class="m" id="sources"></p>
+  </details>
+<script>
+const MAX_ROWS = 300;
+let rows = [];
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function render(q) {
+  q = q.trim().toLowerCase();
+  const hits = q ? rows.filter((r) => r.store.includes(q) || r.c.toLowerCase().includes(q) || (r.d || "").toLowerCase().includes(q)) : [];
+  const tbody = document.querySelector("#out tbody");
+  tbody.innerHTML = hits.filter((_, j) => j < MAX_ROWS).map((r, i) =>
+    `<tr><td>${esc(r.store)}</td><td class="code">${esc(r.c)}</td><td>${esc(r.d)}</td><td class="m">${esc((r.s || []).join(", "))}</td>` +
+    `<td class="m">${esc(r.seen)}</td><td><button data-i="${i}">Copy</button></td></tr>`).join("");
+  tbody.querySelectorAll("button").forEach((b) => b.addEventListener("click", async () => {
+    await navigator.clipboard.writeText(hits[+b.dataset.i].c); b.textContent = "Copied";
+  }));
+  document.getElementById("out").hidden = !hits.length;
+  document.getElementById("status").textContent = q
+    ? `${hits.length} code${hits.length === 1 ? "" : "s"} match "${q}"${hits.length > MAX_ROWS ? `; the first ${MAX_ROWS} are shown` : ""}.`
+    : status0;
+}
+
+let status0 = "";
+fetch("data/codes.json").then((r) => r.json()).then((db) => {
+  for (const [store, codes] of Object.entries(db.domains)) for (const k of codes) rows.push({ store, ...k });
+  status0 = `${db.codes} codes for ${db.stores} stores, as of ${db.generated}.`;
+  document.getElementById("sources").textContent = "Sources: " + Object.entries(db.sources).map(([k, v]) => `${k} (${v})`).join("; ") + ".";
+  const q = document.getElementById("q");
+  q.addEventListener("input", () => render(q.value));
+  const fromUrl = new URLSearchParams(location.search).get("q");
+  if (fromUrl) q.value = fromUrl;
+  render(q.value);
+}).catch(() => { document.getElementById("status").textContent = "The database failed to load."; });
+</script>
+</body>
+</html>

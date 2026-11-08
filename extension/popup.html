@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; width: 320px; margin: 0; padding: 12px; color: #1a1a1a; background: #fff; }
+  h1 { font-size: 15px; margin: 0 0 8px; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+  td { padding: 4px 2px; border-top: 1px solid #e3e3e3; vertical-align: top; }
+  td.code { font-family: ui-monospace, monospace; font-weight: 600; white-space: nowrap; }
+  td.d { color: #555; font-size: 12px; }
+  button { font: inherit; border-radius: 6px; border: 1px solid #888; background: #f4f4f4; padding: 3px 9px; cursor: pointer; }
+  button.p { background: #1f6f43; border-color: #1f6f43; color: #fff; }
+  label { display: block; margin: 4px 0; }
+  .m { color: #555; font-size: 12px; }
+  @media (prefers-color-scheme: dark) { body { background: #1f1f1f; color: #eee; } td { border-color: #333; } button { background: #333; color: #eee; } .m, td.d { color: #aaa; } }
+</style>
+</head>
+<body>
+  <h1 id="title">Open Coupons</h1>
+  <div id="summary" class="m"></div>
+  <table id="codes"></table>
+  <button id="try" class="p" hidden>Try codes on this page</button>
+  <hr>
+  <label><input type="checkbox" id="autoOffer"> Offer to try codes when a checkout page has a coupon field</label>
+  <label><input type="checkbox" id="shareAsk"> Ask to share a code I typed which worked and is missing here</label>
+  <div id="status" class="m"></div>
+  <script src="lib/domains.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

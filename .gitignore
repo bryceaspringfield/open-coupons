@@ -1,0 +1,5 @@
+.temp/
+data/*.sqlite
+__pycache__/
+*.zip
+*.xpi

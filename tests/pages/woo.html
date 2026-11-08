@@ -1,0 +1,35 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Cart</title><script src="shared.js"></script></head>
+<body class="woocommerce-cart woocommerce">
+<div class="woocommerce">
+  <div id="notices"></div>
+  <form class="woocommerce-cart-form" onsubmit="return false">
+    <table><tr><td>Widget</td><td>$80.00</td></tr></table>
+    <div class="coupon"><input type="text" name="coupon_code" placeholder="Coupon code">
+      <button type="button" name="apply_coupon">Apply coupon</button></div>
+  </form>
+  <div class="cart_totals"><table>
+    <tr class="cart-subtotal"><th>Subtotal</th><td>$80.00</td></tr>
+    <tr class="order-total"><th>Total</th><td><strong><span class="amount">$80.00</span></strong></td></tr>
+  </table></div>
+</div>
+<script>
+const SUB = 80;
+let applied = null;
+function paint() {
+  document.querySelector(".order-total .amount").textContent = "$" + mockTotal(SUB, applied).toFixed(2);
+  const n = document.getElementById("notices");
+  n.innerHTML = "";
+  if (applied) n.innerHTML = '<div class="woocommerce-message">Coupon applied. <a href="#" class="woocommerce-remove-coupon">[Remove]</a></div>';
+  const rm = document.querySelector(".woocommerce-remove-coupon");
+  if (rm) rm.addEventListener("click", (e) => { e.preventDefault(); setTimeout(() => { applied = null; paint(); }, 250); });
+  document.body.dataset.applied = applied || "";
+}
+document.querySelector("button[name=apply_coupon]").addEventListener("click", () => {
+  const code = document.querySelector("input[name=coupon_code]").value.trim();
+  setTimeout(() => {
+    if (MOCK_CODES[code.toUpperCase()]) { applied = code.toUpperCase(); paint(); }
+    else { paint(); document.getElementById("notices").innerHTML = '<ul class="woocommerce-error"><li>Coupon "' + code + '" does not exist!</li></ul>'; }
+  }, 350);
+});
+paint();
+</script></body></html>

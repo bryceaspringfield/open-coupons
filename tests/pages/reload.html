@@ -1,0 +1,12 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Basket</title><script src="shared.js"></script></head>
+<body><h2>Your basket</h2>
+<form method="get" action="reload.html"><label for="v">Voucher</label><input type="text" id="v" name="voucher"><button type="submit">Redeem</button></form>
+<p id="err"></p>
+<table><tr><td>Total to pay</td><td id="tot"></td></tr></table>
+<script>
+const code = new URLSearchParams(location.search).get("voucher") || "";
+const ok = !!MOCK_CODES[code.toUpperCase()];
+document.getElementById("tot").textContent = "£" + mockTotal(60, ok ? code : null).toFixed(2);
+if (code && !ok) document.getElementById("err").textContent = "Voucher not valid.";
+document.body.dataset.applied = ok ? code.toUpperCase() : "";
+</script></body></html>

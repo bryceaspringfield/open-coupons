@@ -1,0 +1,29 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Checkout</title><script src="shared.js"></script></head>
+<body><main>
+  <h1>Checkout</h1>
+  <a href="#" id="reveal">Have a promo code?</a>
+  <div id="promo" style="display:none">
+    <input id="pc" aria-label="Gift card or discount code" autocomplete="off">
+    <button id="go">Apply</button><div id="msg"></div>
+  </div>
+  <dl><dt>Subtotal</dt><dd>$120.00</dd><dt>Delivery</dt><dd>$0.00</dd></dl>
+  <div class="sum"><span>Order total</span><span><b id="t">$120.00</b></span></div>
+</main>
+<script>
+// Mimics a framework field: the value is read from the input event, as React reads it.
+let typed = "", applied = null;
+const pc = document.getElementById("pc");
+pc.addEventListener("input", () => { typed = pc.value; });
+document.getElementById("reveal").addEventListener("click", (e) => { e.preventDefault(); document.getElementById("promo").style.display = "block"; });
+document.getElementById("go").addEventListener("click", () => {
+  const code = typed.trim();
+  setTimeout(() => {
+    const m = document.getElementById("msg");
+    if (!code) { applied = null; m.textContent = ""; }
+    else if (MOCK_CODES[code.toUpperCase()]) { applied = code.toUpperCase(); m.textContent = ""; }
+    else { m.textContent = "This code is invalid."; }
+    document.getElementById("t").textContent = "$" + mockTotal(120, applied).toFixed(2);
+    document.body.dataset.applied = applied || "";
+  }, 500);
+});
+</script></body></html>
