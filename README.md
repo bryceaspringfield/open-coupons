@@ -35,21 +35,24 @@ and read once the page stops changing. A checkout which reloads on every code re
 
 ## Seed sources (checked 2026-11-08)
 
-| Source | Robots.txt admits store pages | Used | Reason |
-|---|---|---|---|
-| Syrup (DiscountDB) | no robots.txt | code studied, no data | its API host (db.joinsyrup.com) serves a parked-domain page |
-| Honey | yes | yes | store pages embed the public codes and Honey's coupon-field selectors |
-| Capital One Shopping | yes, except `/s/*/coupon/code*` | listed | store pages fetched; code reveal path disallowed |
-| Coupons.com | yes | yes | store pages embed codes with expiry dates |
-| PromoCodes.com | yes | yes | store pages embed codes |
-| CouponFollow | yes | no | pages show 3 characters of each code; the reveal path is disallowed |
-| Groupon | yes | no | its terms forbid crawlers, robots, and data mining |
-| RetailMeNot, Dealspotr, Knoji, SimplyCodes, CouponCabin | | no | each refused our requests (403) |
-| Offers.com, Savings.com, DealNews, Rakuten | yes | no | no codes in the page markup |
+robots.txt does not gate the harvest (a standing ruling, 2026-11-08); each site's crawl delay, where it states one, still sets the pace.
 
-Requests go out from one address, one at a time a site, 3 s apart (or the site's crawl delay, if longer).
+| Source | Used | How the codes are read |
+|---|---|---|
+| Syrup (DiscountDB) | code studied, no data | its API host (db.joinsyrup.com) serves a parked-domain page |
+| Honey | yes | store pages embed the public codes and Honey's coupon-field selectors; no sitemap, so the walk follows store-to-store links |
+| Capital One Shopping | yes | a table of codes on each store page |
+| CouponFollow | yes | each offer's code is base64 of numbers XORed with a key in the site's tracking script (`CF_KEY` in `seed/extract.py`) |
+| Coupons.com | yes | store pages embed codes with expiry dates |
+| PromoCodes.com | yes | store pages embed codes |
+| Groupon | no | its terms forbid crawlers, robots, and data mining |
+| RetailMeNot, Dealspotr, Knoji, SimplyCodes, CouponCabin | no | each refused our requests (403) |
+| Offers.com, Savings.com, DealNews, Rakuten | no | no codes in the page markup |
+
+Requests go out from one address, one at a time a site, 3 s apart.
 
 ## Testing
 
-`sbatch tests/run_tests.sbatch` loads the extension into headless Chromium and runs three mock checkouts (a WooCommerce
+`sbatch tests/run_tests.sbatch` loads the extension into headless Chromium, then into Firefox (a temporary add-on installed
+through Firefox's remote debugging protocol), and runs three mock checkouts (a WooCommerce
 cart, a generic checkout with a hidden field, and a checkout which reloads on every code) and the share prompt.

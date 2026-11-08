@@ -3,7 +3,7 @@
 
 Usage: fetch_pages.py URLS.txt OUT.sqlite [--gap SECONDS]
 Hosts run in parallel; each host gets one request at a time, GAP seconds apart (or its robots.txt crawl delay, if longer).
-A URL already stored with status 200 is skipped. A host answering 403 or 429 twice is dropped for the run.
+robots.txt is read for its crawl delay only. A URL already stored with status 200 is skipped. A host answering 403 or 429 twice is dropped for the run.
 """
 import argparse
 import concurrent.futures as cf
@@ -45,11 +45,6 @@ def host_worker(host, urls, db_path, gap):
     wait = max(gap, float(delay))
     refusals = done = 0
     for url in urls:
-        if st == 200 and not rp.can_fetch("*", url):
-            with lock:
-                con.execute("insert or replace into pages values (?,?,?,?)", (url, -2, time.time(), b"robots.txt disallows"))
-                con.commit()
-            continue
         time.sleep(wait)
         code, data = get(url)
         with lock:

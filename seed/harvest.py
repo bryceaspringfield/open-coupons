@@ -25,10 +25,17 @@ UA = "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0"
 SOURCES = {
     "honey": ("https://www.joinhoney.com", ["/sitemap.xml"], r"^https://www\.joinhoney\.com/shop/[^/?#]+/?$", None),
     "capital_one_shopping": ("https://capitaloneshopping.com", ["/sitemap.xml"], r"^https://capitaloneshopping\.com/s/([^/?#]+\.[a-z.]+)/coupon/?$", 1),
-    # CouponFollow is left out: its pages show 3 characters of each code, and robots.txt disallows the reveal path (/code/go/).
+    "couponfollow": ("https://couponfollow.com", ["/sitemap/index.xml"], r"^https://couponfollow\.com/site/([^/?#]+\.[a-z.]+)/?$", 1),
     "coupons_com": ("https://www.coupons.com", ["/sitemap.xml"], r"^https://www\.coupons\.com/coupon-codes/[^/?#]+/?$", None),
     "promocodes_com": ("https://www.promocodes.com", ["/sitemap-stores.xml"], r"^https://www\.promocodes\.com/[^/?#]+-coupons/?$", None),
 }
+
+
+# Honey publishes no sitemap; its store pages link about 11 other stores each, so the walk starts from these and follows links.
+SEEDS = {"honey": ["nike", "target", "amazon", "walmart", "bestbuy", "macys", "sephora", "ulta", "kohls", "wayfair", "adidas",
+                   "lowes", "homedepot", "etsy", "chewy", "gap", "oldnavy", "nordstrom", "expedia", "hotels-com"]}
+LINK_RX = re.compile(r'(?:https://www\.joinhoney\.com)?/shop/([a-z0-9][a-z0-9-]*)(?=["/?\\])')
+NOT_STORE_SLUGS = {"share", "p"}
 
 
 def get(url, timeout=45):
@@ -65,7 +72,7 @@ def sitemap_pages(base, roots, pattern, gap, rp):
         if "<sitemapindex" in xml:
             queue.extend(urllib.parse.unquote(l) if "%" not in l else l for l in locs)
         else:
-            pages.extend(l for l in locs if rx.match(l) and rp.can_fetch("*", l))
+            pages.extend(l for l in locs if rx.match(l))
     return sorted(set(pages))
 
 
@@ -75,6 +82,7 @@ def main():
     ap.add_argument("--gap", type=float, default=3.0)
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--list-only", action="store_true")
+    ap.add_argument("--max-minutes", type=float, default=0, help="stop cleanly after this many minutes")
     a = ap.parse_args()
     base, roots, pattern, key_group = SOURCES[a.source]
 
@@ -96,6 +104,7 @@ def main():
 
     if not con.execute("select count(*) from store_pages").fetchone()[0]:
         pages = sitemap_pages(base, roots, pattern, gap, rp)
+        pages += [f"{base}/shop/{slug}" for slug in SEEDS.get(a.source, [])]
         con.executemany("insert or ignore into store_pages values (?, ?)", [(u, time.time()) for u in pages])
         con.commit()
     todo = [u for (u,) in con.execute("select url from store_pages where url not in (select url from pages_done) order by url")]
@@ -108,7 +117,12 @@ def main():
 
     refusals = 0
     key_rx = re.compile(pattern)
-    for i, url in enumerate(todo):
+    t_start = time.time()
+    while todo:
+        if a.max_minutes and time.time() - t_start > a.max_minutes * 60:
+            break
+        url = todo.pop(0)
+        i = con.execute("select count(*) from pages_done").fetchone()[0]
         time.sleep(gap)
         st, body = get(url)
         if st in (403, 429):
@@ -136,11 +150,19 @@ def main():
                             [(key, c["code"], c.get("description"), url, day, c.get("extra")) for c in res["codes"]])
             con.executemany("insert or replace into selectors values (?,?,?)", [(key, n, v) for n, v in res["selectors"].items()])
         con.execute("insert or replace into pages_done values (?,?,?,?,?)", (url, st, time.time(), len(res["codes"]), key))
+        if a.source == "honey" and html:
+            new = {f"{base}/shop/{m}" for m in LINK_RX.findall(extract.unescape(html)) if m not in NOT_STORE_SLUGS}
+            have = {u for (u,) in con.execute("select url from store_pages")}
+            fresh = sorted(new - have)
+            con.executemany("insert or ignore into store_pages values (?, ?)", [(u, time.time()) for u in fresh])
+            todo.extend(fresh)
         con.commit()
         if i % 200 == 0:
             n = con.execute("select count(*) from codes").fetchone()[0]
             print(f"{i + 1}/{len(todo)} pages; {n} codes stored", flush=True)
     n = con.execute("select count(*) from codes").fetchone()[0]
+    left = con.execute("select count(*) from store_pages where url not in (select url from pages_done)").fetchone()[0]
+    print(f"remaining {left}", flush=True)
     print(f"done: {n} codes stored from {con.execute('select count(*) from pages_done').fetchone()[0]} pages", flush=True)
 
 

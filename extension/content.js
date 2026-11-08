@@ -288,11 +288,16 @@
     if (!known.length || sessionStorage.getItem("__open_coupons_dismissed")) return;
     const prefs = (await send({ action: "prefs" })) || {};
     if (prefs.autoOffer === false) return;
+    // Test pages on the reserved .test domain start a run from the URL, since a test browser cannot press the panel's buttons.
+    const autorun = /\.test$/.test(location.hostname) && location.hash === "#oc-autorun";
     // Look for the field now and twice more as single-page checkouts render.
     for (const wait of [0, 2000, 5000]) {
       await sleep(wait);
       const loc = P.locate(store, storeSel);
-      if (loc.input || (loc.reveal && (CHECKOUT_URL_RX.test(location.pathname) || P.findTotalGeneric()))) { showOffer(); return; }
+      if (loc.input || (loc.reveal && (CHECKOUT_URL_RX.test(location.pathname) || P.findTotalGeneric()))) {
+        if (autorun) { history.replaceState(null, "", location.pathname + location.search); startRun(); } else showOffer();
+        return;
+      }
     }
   }
 

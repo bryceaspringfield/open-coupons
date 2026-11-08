@@ -11,12 +11,17 @@ import collections
 import re
 import sys
 import urllib.parse
+from html import unescape as html_unescape
 
 CODE_KEY_RX = re.compile(r'"(code|couponCode|coupon_code|promoCode|promo_code|promocode|offerCode|voucherCode|discountCode)"\s*:\s*"([^"]{3,32})"')
 EXPIRY_RX = re.compile(r'"(expiredAt|expirationDate|expiration_date|endTime|expires|expiresAt|endDate)"\s*:\s*"([0-9]{4}-[0-9]{2}-[0-9]{2})')
 DESC_RX = re.compile(r'"(description|generatedDescription|title|headline|offerText|offer_title|name)"\s*:\s*"([^"]{6,300})"')
-CF_RX = re.compile(r'<span data-code="true"[^>]*>\s*([^<\s]{2,32})\s*</span>')
-CF_TITLE_RX = re.compile(r"<h3[^>]*>(.*?)</h3>", re.S)
+# CouponFollow's offer props hold each code as base64 of comma-separated numbers, XORed with the key in its tracking module
+# (encryption.*.js imports it from tracking.*.js; read 2026-11-08). A changed key decodes to non-code text, which code_ok rejects.
+CF_KEY = "ffGndlgFCNFyjAx"
+# Capital One Shopping lists codes in a table: a Description cell, then a Code cell whose first button shows the code.
+COS_ROW_RX = re.compile(r'<td data-label="Description"[^>]*>(.*?)</td>\s*<td data-label="Code"[^>]*>\s*<button[^>]*>\s*([^<\s]{2,32})\s*<', re.S)
+CF_PROP_RX = re.compile(r'"isExpired":\[0,(true|false)\].{0,1500}?"title":\[0,"([^"]{0,300})"\].{0,3000}?"code":\[0,"([A-Za-z0-9+/=]{4,200})"\]', re.S)
 URL_RX = re.compile(r'"(url|link|merchantUrl|storeUrl|website|domain|affiliateUrl|deepLink)"\s*:\s*"(https?://[^"]+)"')
 CODE_OK_RX = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_\-]{2,31}$")
 STOP = {"COUPON", "CODE", "CODES", "DEAL", "DEALS", "SALE", "NULL", "TRUE", "FALSE", "NONE", "USD", "EUR", "GBP", "CAD", "AUD",
@@ -29,6 +34,15 @@ NOT_STORE = re.compile(r"(joinhoney|capitaloneshopping|couponfollow|coupons\.com
 HONEY_SEL_RX = re.compile(r'"(pns_site(?:SelCartCodeBox|SelCartCodeSubmit|SelCartTotalPrice|PreApplyCodeAction|RemoveCodeAction|'
                           r'SelCartDiscountPrice|SelCartInitCodeRegex))"\s*:\s*"((?:[^"\\]|\\.)*)"')
 TWO_LABEL = {"co.uk", "org.uk", "com.au", "co.nz", "co.jp", "com.br", "com.mx", "co.in", "com.sg", "co.za", "com.ar", "com.hk", "co.kr"}
+
+
+def cf_decode(b64):
+    import base64
+    try:
+        nums = base64.b64decode(b64).decode().split(",")
+        return "".join(chr(int(n) ^ ord(CF_KEY[i % len(CF_KEY)])) for i, n in enumerate(nums))
+    except Exception:
+        return ""
 
 
 def store_key(host):
@@ -54,7 +68,7 @@ def code_ok(c):
 
 
 def clean(t):
-    return re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), t)[:300] if t else None
+    return html_unescape(re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), t))[:300] if t else None
 
 
 def nearest(rx, text, pos, span=1500):
@@ -79,13 +93,19 @@ def extract(html, source=""):
         d = nearest(DESC_RX, text, m.start())
         e = nearest(EXPIRY_RX, text, m.start(), 900)
         codes.setdefault(c, {"code": c, "description": clean(d.group(2)) if d else None, "extra": f"expires={e.group(2)}" if e else None})
-    for m in CF_RX.finditer(html):
-        c = m.group(1).strip()
-        if not code_ok(c):
-            continue
-        titles = list(CF_TITLE_RX.finditer(html, max(0, m.start() - 6000), m.start()))
-        t = re.sub(r"<[^>]+>|\s+", " ", titles[-1].group(1)).strip() if titles else None
-        codes.setdefault(c, {"code": c, "description": t[:300] if t else None})
+    if source == "capital_one_shopping":
+        for m in COS_ROW_RX.finditer(html):
+            c = m.group(2).strip()
+            if code_ok(c):
+                codes.setdefault(c, {"code": c, "description": clean(re.sub(r"<[^>]+>|\s+", " ", m.group(1)).strip())})
+    if source == "couponfollow":
+        props = html_unescape(html)
+        for m in CF_PROP_RX.finditer(props):
+            if m.group(1) == "true":
+                continue
+            c = cf_decode(m.group(3)).strip()
+            if code_ok(c):
+                codes.setdefault(c, {"code": c, "description": clean(m.group(2))})
     hosts = collections.Counter()
     for m in URL_RX.finditer(text):
         h = urllib.parse.urlsplit(m.group(2)).netloc
@@ -99,7 +119,7 @@ if __name__ == "__main__":
     import sqlite3
     con = sqlite3.connect(sys.argv[1])
     for url, body in con.execute("select url, body from pages where status=200 and url not like '%robots%' and url not like '%terms%' and url not like '%sitemap%'"):
-        src = "honey" if "joinhoney" in url else ""
+        src = "honey" if "joinhoney" in url else "couponfollow" if "couponfollow" in url else "capital_one_shopping" if "capitalone" in url else ""
         r = extract(body.decode("utf-8", "replace"), src)
         print(f"{len(r['codes']):>3} codes  store={r['store_host']}  sel={len(r['selectors'])}  {url}")
         for c in r["codes"][:6]:
