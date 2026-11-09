@@ -10,6 +10,7 @@ skipped), GAP seconds apart from one address, and keeps only the extracted codes
 one generic extractor (extract.py) shared by every source.
 """
 import argparse
+import os
 import gzip
 import re
 import sqlite3
@@ -43,7 +44,13 @@ SEEDS = {"honey": ["nike", "target", "amazon", "walmart", "bestbuy", "macys", "s
 LINK_RX = re.compile(r'(?:https://www\.joinhoney\.com)?/shop/([a-z0-9][a-z0-9-]*)(?=["/?\\])')
 NOT_STORE_SLUGS = {"share", "p"}
 # CouponFollow's CDN answered 406 to 80 of 148 pages at 3 s apart (2026-11-08); it gets 6 s.
-GAP_BY_SOURCE = {"couponfollow": 6.0}
+# Seconds between requests from one egress, the pace the broker starts each (site, egress) pair at and raises by a fifth after 40
+# answers in a row (rate_probe.py from one address, 2026-11-09 01:40 ET; ranges in ~/.claude/skills/efficiency/reference/rate_limits.csv).
+# promocodes and retailmenot held 16 a second, the probe's cap; honey held 1 and drew 429 at 2; capitaloneshopping drew 429 after 45 pages
+# at 4 a second; simplycodes held 0.5 with the probe cut short; couponfollow and groupon refused the probe's Chrome fingerprint, so they keep
+# the pace they ran at.
+GAP_BY_SOURCE = {"promocodes_com": 0.1, "retailmenot": 0.1, "honey": 1.0, "capital_one_shopping": 1.0, "simplycodes": 2.0,
+                 "couponfollow": 6.0, "groupon": 3.0}
 MAX_REFUSALS = 10
 
 
@@ -63,11 +70,24 @@ def egress_proxy(name):
     raise SystemExit(f"egress {name} not listed")
 
 
+sys.path.insert(0, os.path.expanduser("~/.claude/skills/efficiency"))
+import wb_gate  # noqa: E402  the broker paces each site and egress pair (/quality, 2026-11-09)
+EGRESS, GAP = None, None
+
+
 def get(url, timeout=45):
+    """One request, granted by the broker at the site's pace for this job's egress, and reported back to it."""
+    with wb_gate.gate(url, egress=EGRESS, max_age=0, gap=GAP, inflight=1) as g:
+        st, data = fetch(url, timeout, g.proxy or PROXY)
+        g.done(str(st) if st > 0 else "error")
+        return st, data
+
+
+def fetch(url, timeout, proxy):
     if CLIENT:
         from curl_cffi import requests as creq
         try:
-            r = creq.get(url, impersonate=CLIENT, timeout=timeout, proxies={"http": PROXY, "https": PROXY} if PROXY else None)
+            r = creq.get(url, impersonate=CLIENT, timeout=timeout, proxies={"http": proxy, "https": proxy} if proxy else None)
             data = r.content[:12_000_000]
             if data[:2] == b"\x1f\x8b":
                 data = gzip.decompress(data)
@@ -76,8 +96,10 @@ def get(url, timeout=45):
             return -1, str(e).encode()[:300]
     req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "text/html,application/xml;q=0.9,*/*;q=0.8",
                                                "Accept-Language": "en-US,en;q=0.8"})
+    # urllib went direct before 2026-11-09 and ignored --egress, since only curl_cffi read the proxy
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({"http": proxy, "https": proxy} if proxy else {}))
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with opener.open(req, timeout=timeout) as r:
             data = r.read(12_000_000)
             if url.endswith(".gz") or data[:2] == b"\x1f\x8b":
                 data = gzip.decompress(data)
@@ -114,20 +136,26 @@ def sitemap_pages(base, roots, pattern, gap, rp):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("source", choices=sorted(SOURCES))
-    ap.add_argument("--gap", type=float, default=3.0)
+    ap.add_argument("--gap", type=float, default=None, help="seconds between requests (default: GAP_BY_SOURCE, else 3)")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--list-only", action="store_true")
     ap.add_argument("--egress", default=None)
     ap.add_argument("--shard", default="0/1")
+    ap.add_argument("--set", default="", help="a new shard set (r21), when the shard count changes: files seed_<source>_<set>_s<I>")
     ap.add_argument("--max-minutes", type=float, default=0, help="stop cleanly after this many minutes")
     a = ap.parse_args()
     base, roots, pattern, key_group = SOURCES[a.source]
-    global CLIENT, PROXY
+    global CLIENT, PROXY, EGRESS, GAP
     CLIENT = IMPERSONATE.get(a.source)
     PROXY = egress_proxy(a.egress) if a.egress else None
+    EGRESS = a.egress
     shard, nshard = map(int, a.shard.split("/"))
 
-    con = sqlite3.connect(f"10_seed/output/seed_{a.source}" + (f"_s{shard}" if nshard > 1 else "") + ".sqlite")
+    if a.set and not re.fullmatch(r"r\d+", a.set):
+        raise SystemExit("--set takes r<N>")
+    mine = f"10_seed/output/seed_{a.source}" + (f"_{a.set}" if a.set else "") + (f"_s{shard}" if nshard > 1 else "") + ".sqlite"
+    fresh_file = not os.path.exists(mine)
+    con = sqlite3.connect(mine)
     con.executescript("""
       create table if not exists store_pages (url text primary key, listed real);
       create table if not exists pages_done (url text primary key, status int, fetched real, n_codes int, store_key text);
@@ -139,14 +167,27 @@ def main():
     st, body = get(base + "/robots.txt")
     rp.parse(body.decode("utf-8", "replace").splitlines() if st == 200 else [])
     try:
-        gap = max(a.gap, GAP_BY_SOURCE.get(a.source, 0), float(rp.crawl_delay("*") or 0))
+        gap = max(a.gap or GAP_BY_SOURCE.get(a.source, 3.0), float(rp.crawl_delay("*") or 0))
     except AttributeError:
-        gap = max(a.gap, GAP_BY_SOURCE.get(a.source, 0))
+        gap = a.gap or GAP_BY_SOURCE.get(a.source, 3.0)
+    GAP = gap  # the measured pace once rate_limits.csv has the site; the broker paces from it
 
-    first = f"10_seed/output/seed_{a.source}_s0.sqlite"
-    if nshard > 1 and shard > 0 and not con.execute("select count(*) from store_pages").fetchone()[0] and __import__("os").path.exists(first):
-        # Shards share shard 0's store list, since a sitemap fetched through a proxy can fail and leave a shard empty.
-        con.executemany("insert or ignore into store_pages values (?, ?)", sqlite3.connect(first).execute("select url, listed from store_pages"))
+    # A shard reads the store list of every file of its source (the unsharded run, earlier shard sets, and the other shards, since
+    # a link one shard finds belongs to another), and a new shard file also takes the pages those files already fetched.
+    if nshard > 1:
+        import glob
+        for f in sorted(glob.glob(f"10_seed/output/seed_{a.source}*.sqlite")):
+            if os.path.abspath(f) == os.path.abspath(mine) or not re.fullmatch(rf"seed_{a.source}(_r\d+)?(_s\d+)?\.sqlite", os.path.basename(f)):
+                continue
+            s = sqlite3.connect(f)
+            try:
+                con.executemany("insert or ignore into store_pages values (?, ?)", s.execute("select url, listed from store_pages"))
+                if fresh_file:
+                    con.executemany("insert or ignore into pages_done values (?, ?, ?, ?, ?)",
+                                    s.execute("select url, status, fetched, n_codes, store_key from pages_done where status in (200, 404, 410)"))
+            except sqlite3.OperationalError:  # a file another job is creating has no tables yet
+                pass
+            s.close()
         con.commit()
     if not con.execute("select count(*) from store_pages").fetchone()[0]:
         pages = sitemap_pages(base, roots, pattern, gap, rp)
@@ -174,7 +215,7 @@ def main():
             break
         url = todo.pop(0)
         i = con.execute("select count(*) from pages_done").fetchone()[0]
-        time.sleep(gap)
+        pass  # the broker paces each request (wb_gate)
         st, body = get(url)
         if st in (403, 406, 429):
             # A refusal is left out of pages_done, so the next run retries it; ten in a row end this run.
@@ -190,7 +231,7 @@ def main():
         key = extract.store_key(urllib.parse.unquote(key_rx.match(url).group(key_group))) if key_group else None
         res = extract.extract(html, a.source, key) if html else {"codes": [], "store_host": None, "selectors": {}}
         for rurl, _label in extract.reveals(html, a.source, base) if html else []:
-            time.sleep(gap)
+            pass  # the broker paces each request (wb_gate)
             rst, rbody = get(rurl)
             got = extract.reveal_code(a.source, rbody) if rst == 200 else None
             if got:
@@ -213,7 +254,7 @@ def main():
             have = {u for (u,) in con.execute("select url from store_pages")}
             fresh = sorted(new - have)
             con.executemany("insert or ignore into store_pages values (?, ?)", [(u, time.time()) for u in fresh])
-            todo.extend(fresh)
+            todo.extend(u for u in fresh if nshard == 1 or zlib.crc32(u.encode()) % nshard == shard)  # the rest: their shard's next run
         con.commit()
         if i % 200 == 0:
             n = con.execute("select count(*) from codes").fetchone()[0]

@@ -63,7 +63,7 @@ def main():
     today = datetime.date.today().isoformat()
     rows, stats = [], collections.Counter()
     for path in sorted(glob.glob(os.path.join(ROOT, "10_seed", "output", "seed_*.sqlite"))):
-        src = re.match(r"seed_(.+?)(?:_s\d+)?\.sqlite", os.path.basename(path)).group(1)
+        src = re.match(r"seed_(.+?)(?:_r\d+)?(?:_s\d+)?\.sqlite", os.path.basename(path)).group(1)
         con = sqlite3.connect(path)
         for key, code, desc, page, seen, extra in con.execute("select store_key, code, description, page_url, seen, extra from codes"):
             exp = re.search(r"expires=(\d{4}-\d{2}-\d{2})", extra or "")
