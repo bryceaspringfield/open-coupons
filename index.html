@@ -56,8 +56,11 @@ function render(q) {
 }
 
 let status0 = "";
-fetch("data/codes.json").then((r) => r.json()).then((db) => {
-  for (const [store, codes] of Object.entries(db.domains)) for (const k of codes) rows.push({ store, ...k });
+fetch("data/index.json").then((r) => r.json()).then(async (db) => {
+  document.getElementById("status").textContent = "Loading the database.";
+  await Promise.all([...Array(db.shards).keys()].map((i) => fetch(`data/shards/${i}.json`).then((r) => r.json()).then((part) => {
+    for (const [store, codes] of Object.entries(part.domains)) for (const k of codes) rows.push({ store, ...k });
+  })));
   status0 = `${db.codes} codes for ${db.stores} stores, as of ${db.generated}.`;
   document.getElementById("sources").textContent = "Sources: " + Object.entries(db.sources).map(([k, v]) => `${k} (${v})`).join("; ") + ".";
   const q = document.getElementById("q");
