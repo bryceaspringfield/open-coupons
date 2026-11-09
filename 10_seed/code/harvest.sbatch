@@ -11,5 +11,5 @@ PYTHONPATH=.temp/pylib ~/.conda/envs/browser/bin/python 10_seed/code/harvest.py 
 left=$(grep -oP '^remaining \K\d+' ".temp/logs/harvest_${TAG}.last" | tail -1)
 # A run ended by refusals waits 2 hours before the next, since resubmitting at once presses an address the site refuses.
 BEGIN=now; grep -q "refusals in a row" ".temp/logs/harvest_${TAG}.last" && BEGIN=now+2hours
-if [ "${left:-0}" -gt 0 ]; then sbatch -J "$SLURM_JOB_NAME" --begin="$BEGIN" --export=SOURCE="$SOURCE",HARVEST_ARGS="$HARVEST_ARGS" 10_seed/code/harvest.sbatch; fi
+if [ "${left:-0}" -gt 0 ]; then bash ~/.claude/skills/efficiency/autosub.sh -J "$SLURM_JOB_NAME" --begin="$BEGIN" --export=SOURCE="$SOURCE",HARVEST_ARGS="$HARVEST_ARGS" 10_seed/code/harvest.sbatch; fi
 python3 10_seed/code/build_db.py > .temp/logs/build_db.last 2>&1
