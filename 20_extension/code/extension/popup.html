@@ -13,7 +13,10 @@
   button.p { background: #1f6f43; border-color: #1f6f43; color: #fff; }
   label { display: block; margin: 4px 0; }
   .m { color: #555; font-size: 12px; }
-  @media (prefers-color-scheme: dark) { body { background: #1f1f1f; color: #eee; } td { border-color: #333; } button { background: #333; color: #eee; } .m, td.d { color: #aaa; } }
+  td.pr { white-space: nowrap; font-weight: 600; }
+  a { color: #1f6f43; }
+  td a { color: inherit; }
+  @media (prefers-color-scheme: dark) { body { background: #1f1f1f; color: #eee; } td { border-color: #333; } button { background: #333; color: #eee; } .m, td.d { color: #aaa; } a { color: #7fd1a4; } }
 </style>
 </head>
 <body>
@@ -21,6 +24,11 @@
   <div id="summary" class="m"></div>
   <table id="codes"></table>
   <button id="try" class="p" hidden>Try codes on this page</button>
+  <hr>
+  <h1>Price errors</h1>
+  <div id="errSummary" class="m"></div>
+  <table id="errors"></table>
+  <a id="errAll" href="https://bryceaspringfield.github.io/price-error-finder/" target="_blank" rel="noopener">View every price error</a>
   <hr>
   <label><input type="checkbox" id="autoOffer"> Offer to try codes when a checkout page has a coupon field</label>
   <label><input type="checkbox" id="shareAsk"> Ask to share a code I typed which worked and is missing here</label>
