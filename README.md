@@ -6,7 +6,7 @@ no new tab, and no ads.
 
 ## Privacy
 
-- The extension downloads the whole code database at once (once a day, from https://bryceaspringfield.github.io/open-coupons/data/codes.json)
+- The extension downloads the whole code database (once a day, as 64 files from https://bryceaspringfield.github.io/open-coupons/data/, the same files for every user)
   and looks a store up in the browser, so no request names the site being visited.
 - It collects no personal, browsing, or ad data, and it swaps no affiliate cookies.
 - Its only upload: after a code the user typed works and is missing from the database, it asks whether to share the code,
@@ -17,9 +17,9 @@ no new tab, and no ads.
 
 | Folder | Holds |
 |---|---|
-| `20_extension/code/extension/` | the extension: `manifest.json` (Manifest V3, Firefox and Chrome), `background.js` (database and shares), `content.js` (the trial run and the share prompt), `lib/platforms.js` (coupon-field selectors by store and platform, and a generic field search), `popup.*`, `data/codes.json` (the bundled database) |
-| `99_overall/writeup/site/` | the static search page (`index.html`, served at https://bryceaspringfield.github.io/open-coupons/ and kept out of search engines) and its copy of `data/codes.json` |
-| `10_seed/code/` | the seed bank: `probe_sources.py` (robots.txt and terms of each source), `harvest.py` (one source's store pages into `10_seed/output/seed_<source>.sqlite`), `extract.py` (the generic code extractor), `build_db.py` (the merge into `codes.json`) |
+| `20_extension/code/extension/` | the extension: `manifest.json` (Manifest V3, Firefox and Chrome), `background.js` (database and shares), `content.js` (the trial run and the share prompt), `lib/platforms.js` (coupon-field selectors by store and platform, and a generic field search), `popup.*`, `data/index.json` and `data/shards/` (the bundled database, 64 files by a hash of the store's domain) |
+| `99_overall/writeup/site/` | the static search page (`index.html`, served at https://bryceaspringfield.github.io/open-coupons/ and kept out of search engines) and its copy of `data/index.json` and `data/shards/` |
+| `10_seed/code/` | the seed bank: `probe_sources.py` (robots.txt and terms of each source), `harvest.py` (one source's store pages into `10_seed/output/seed_<source>.sqlite`), `extract.py` (the generic code extractor), `build_db.py` (the merge into `data/index.json` and `data/shards/`) |
 | `20_extension/code/tests/` | mock checkout pages and `run_tests.py`, an end-to-end run in headless Chromium (`sbatch 20_extension/code/tests/run_tests.sbatch`) |
 
 ## How the extension finds the coupon field

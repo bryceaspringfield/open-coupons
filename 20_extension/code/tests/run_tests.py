@@ -8,6 +8,7 @@ import functools
 import http.server
 import json
 import pathlib
+import re
 import shutil
 import sys
 import threading
@@ -70,7 +71,15 @@ def main(ext_src, scratch):
     ext = scratch / "ext"
     shutil.rmtree(scratch, ignore_errors=True)
     shutil.copytree(ext_src, ext)
-    (ext / "data" / "codes.json").write_text(json.dumps(TEST_DB))
+    # The test database: every shard file holds the three test stores, so the lookup finds them whichever shard a store hashes to.
+    # No refresh during a test: the published database must not replace the test stores.
+    bg = ext / "background.js"
+    bg.write_text(re.sub(r'const DB_URL = "[^"]*";', 'const DB_URL = "";', bg.read_text()))
+    shutil.rmtree(ext / "data", ignore_errors=True)
+    (ext / "data" / "shards").mkdir(parents=True)
+    (ext / "data" / "index.json").write_text(json.dumps({"generated": "test", "stores": 3, "codes": 11, "shards": 64}))
+    for i in range(64):
+        (ext / "data" / "shards" / f"{i}.json").write_text(json.dumps(TEST_DB))
     serve()
     with sync_playwright() as p:
         ctx = p.chromium.launch_persistent_context(
@@ -78,6 +87,16 @@ def main(ext_src, scratch):
             args=[f"--disable-extensions-except={ext}", f"--load-extension={ext}",
                   f"--host-resolver-rules=MAP *.test 127.0.0.1", "--no-sandbox"])
         sw = ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker", timeout=30000)
+        # The builder (Python) and the extension (JavaScript) must send a store to the same shard file.
+        names = ["amazon.com", "woo.test", "münchen.de", "a-b.co.uk", "例え.jp"]
+        want = []
+        for d in names:
+            h = 0x811C9DC5
+            for b in d.encode("utf-8"):
+                h = ((h ^ b) * 0x01000193) & 0xFFFFFFFF
+            want.append(h % 64)
+        got = sw.evaluate("(names) => names.map((d) => shardOf(d, 64))", names)
+        check("shard hash matches the builder's", got == want, f"{got} {want}")
         page = ctx.pages[0] if ctx.pages else ctx.new_page()
         errors = []
         page.on("pageerror", lambda e: errors.append(str(e)))

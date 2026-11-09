@@ -6,6 +6,7 @@ Usage: run_firefox.py EXTENSION_DIR SCRATCH_DIR
 """
 import json
 import pathlib
+import re
 import shutil
 import socket
 import sys
@@ -53,7 +54,15 @@ def main(ext_src, scratch):
     shutil.rmtree(scratch, ignore_errors=True)
     ext = scratch / "ext"
     shutil.copytree(ext_src, ext)
-    (ext / "data" / "codes.json").write_text(json.dumps(TEST_DB))
+    # The test database: every shard file holds the three test stores, so the lookup finds them whichever shard a store hashes to.
+    # No refresh during a test: the published database must not replace the test stores.
+    bg = ext / "background.js"
+    bg.write_text(re.sub(r'const DB_URL = "[^"]*";', 'const DB_URL = "";', bg.read_text()))
+    shutil.rmtree(ext / "data", ignore_errors=True)
+    (ext / "data" / "shards").mkdir(parents=True)
+    (ext / "data" / "index.json").write_text(json.dumps({"generated": "test", "stores": 3, "codes": 11, "shards": 64}))
+    for i in range(64):
+        (ext / "data" / "shards" / f"{i}.json").write_text(json.dumps(TEST_DB))
     serve()
     prefs = {"devtools.debugger.remote-enabled": True, "devtools.chrome.enabled": True,
              "devtools.debugger.prompt-connection": False, "xpinstall.signatures.required": False,

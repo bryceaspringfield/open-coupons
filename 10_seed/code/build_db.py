@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Merges 10_seed/output/seed_<source>.sqlite (and 10_seed/output/shared_codes.tsv, the codes users chose to share) into one code database.
 
-Writes 20_extension/code/extension/data/codes.json (bundled with the extension) and 99_overall/writeup/site/data/codes.json (read by the search page), and
+Writes data/index.json and data/shards/<n>.json under 20_extension/code/extension/ (bundled with the extension) and 99_overall/writeup/site/ (read by the search page and the daily refresh), and
 prints one line of counts per source. A store page known only by its slug ("slug:nike") takes the one store key from another
 source whose first label is that slug (nike -> nike.com), else <slug>.com; a slug matching several keys is dropped. Codes past their expiry date are dropped.
 """
@@ -59,6 +59,17 @@ def selectors():
     return {k: v for k, v in out.items() if "input" in v}
 
 
+N_SHARDS = 64  # 2026-11-09: 75 MB over 64 files is about 1.2 MB a file, which a browser parses in about 10 ms
+
+
+def shard_of(domain):
+    """FNV-1a (32 bits) of the domain's UTF-8 bytes, modulo N_SHARDS; background.js and the search page compute the same."""
+    h = 0x811C9DC5
+    for b in domain.encode("utf-8"):
+        h = ((h ^ b) * 0x01000193) & 0xFFFFFFFF
+    return h % N_SHARDS
+
+
 def main():
     today = datetime.date.today().isoformat()
     rows, stats = [], collections.Counter()
@@ -114,17 +125,30 @@ def main():
     db = {"generated": today, "stores": len(domains), "codes": n_codes,
           "sources": {s: SOURCE_URLS.get(s, s) for s in sorted({r[0] for r in rows})}, "domains": domains,
           "selectors": {k: v for k, v in sel.items() if k in domains}}
-    for out in ("20_extension/code/extension/data/codes.json", "99_overall/writeup/site/data/codes.json"):
-        p = os.path.join(ROOT, out)
-        tmp = f"{p}.{os.getpid()}.tmp"  # one name per process, since harvest shards ending together run build_db at once
-        with open(tmp, "w") as f:
-            json.dump(db, f, separators=(",", ":"), ensure_ascii=False)
-        if os.path.getsize(tmp) > 0:
-            os.replace(tmp, p)
+    # The database is cut into N_SHARDS files by a hash of the store's domain, so the extension parses one small file a lookup.
+    meta = {k: v for k, v in db.items() if k not in ("domains", "selectors")}
+    meta["shards"] = N_SHARDS
+    parts = [{"domains": {}, "selectors": {}} for _ in range(N_SHARDS)]
+    for key, recs in domains.items():
+        parts[shard_of(key)]["domains"][key] = recs
+    for key, v in db["selectors"].items():
+        parts[shard_of(key)]["selectors"][key] = v
+    size = 0
+    for out in ("20_extension/code/extension/data", "99_overall/writeup/site/data"):
+        d = os.path.join(ROOT, out)
+        os.makedirs(os.path.join(d, "shards"), exist_ok=True)
+        for name, obj in [("index.json", meta)] + [(f"shards/{i}.json", part) for i, part in enumerate(parts)]:
+            p = os.path.join(d, name)
+            tmp = f"{p}.{os.getpid()}.tmp"  # one name per process, since harvest shards ending together run build_db at once
+            with open(tmp, "w") as f:
+                json.dump(obj, f, separators=(",", ":"), ensure_ascii=False)
+            if os.path.getsize(tmp) > 0:
+                size += os.path.getsize(tmp)
+                os.replace(tmp, p)
     for src in sorted({s for s, _ in stats}):
         print(src, {k: v for (s, k), v in stats.items() if s == src})
     print(f"selectors for {len(db['selectors'])} stores")
-    print(f"database: {len(domains)} stores, {n_codes} codes, {os.path.getsize(os.path.join(ROOT, '99_overall/writeup/site/data/codes.json'))} bytes")
+    print(f"database: {len(domains)} stores, {n_codes} codes, {size // 2} bytes in {N_SHARDS} shards")
 
 
 if __name__ == "__main__":

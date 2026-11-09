@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Open Coupons",
   "short_name": "Open Coupons",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Tries the known coupon codes on a checkout page and keeps the one giving the lowest total, and lists price errors still live at the store. Collects no browsing or personal data.",
   "permissions": [
     "storage",
