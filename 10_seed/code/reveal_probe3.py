@@ -11,7 +11,7 @@ PAGES = {"groupon": "https://www.groupon.com/coupons/nike", "retailmenot": "http
          "couponcabin": "https://www.couponcabin.com/coupons/nike/"}
 BTN = re.compile(r"^\s*(get|show|reveal|see)\s+(promo\s+)?code", re.I)
 BLOCK = re.compile(r"just a moment|un momento|access restricted|attention required", re.I)
-out = sqlite3.connect("data/sample2_pages.sqlite")
+out = sqlite3.connect("10_seed/output/sample2_pages.sqlite")
 print("stealth patches:", PATCHES.count("try {"))
 with sync_playwright() as p:
     ctx = p.chromium.launch_persistent_context(f"/tmp/coupons_probe_{os.getpid()}", headless=False, channel="chromium",

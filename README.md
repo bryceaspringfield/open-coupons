@@ -11,16 +11,16 @@ no new tab, and no ads.
 - It collects no personal, browsing, or ad data, and it swaps no affiliate cookies.
 - Its only upload: after a code the user typed works and is missing from the database, it asks whether to share the code,
   and a share sends the store and the code alone. Shares wait in a local queue until a receiving endpoint is approved
-  (`SHARE_ENDPOINT` in `extension/background.js`).
+  (`SHARE_ENDPOINT` in `20_extension/code/extension/background.js`).
 
 ## Layout
 
 | Folder | Holds |
 |---|---|
-| `extension/` | the extension: `manifest.json` (Manifest V3, Firefox and Chrome), `background.js` (database and shares), `content.js` (the trial run and the share prompt), `lib/platforms.js` (coupon-field selectors by store and platform, and a generic field search), `popup.*`, `data/codes.json` (the bundled database) |
-| `site/` | the static search page (`index.html`, served at https://bryceaspringfield.github.io/open-coupons/ and kept out of search engines) and its copy of `data/codes.json` |
-| `seed/` | the seed bank: `probe_sources.py` (robots.txt and terms of each source), `harvest.py` (one source's store pages into `data/seed_<source>.sqlite`), `extract.py` (the generic code extractor), `build_db.py` (the merge into `codes.json`) |
-| `tests/` | mock checkout pages and `run_tests.py`, an end-to-end run in headless Chromium (`sbatch tests/run_tests.sbatch`) |
+| `20_extension/code/extension/` | the extension: `manifest.json` (Manifest V3, Firefox and Chrome), `background.js` (database and shares), `content.js` (the trial run and the share prompt), `lib/platforms.js` (coupon-field selectors by store and platform, and a generic field search), `popup.*`, `data/codes.json` (the bundled database) |
+| `99_overall/writeup/site/` | the static search page (`index.html`, served at https://bryceaspringfield.github.io/open-coupons/ and kept out of search engines) and its copy of `data/codes.json` |
+| `10_seed/code/` | the seed bank: `probe_sources.py` (robots.txt and terms of each source), `harvest.py` (one source's store pages into `10_seed/output/seed_<source>.sqlite`), `extract.py` (the generic code extractor), `build_db.py` (the merge into `codes.json`) |
+| `20_extension/code/tests/` | mock checkout pages and `run_tests.py`, an end-to-end run in headless Chromium (`sbatch 20_extension/code/tests/run_tests.sbatch`) |
 
 ## How the extension finds the coupon field
 
@@ -42,7 +42,7 @@ robots.txt does not gate the harvest (a standing ruling, 2026-11-08); each site'
 | Syrup (DiscountDB) | code studied, no data | its API host (db.joinsyrup.com) serves a parked-domain page |
 | Honey | yes | store pages embed the public codes and Honey's coupon-field selectors; no sitemap, so the walk follows store-to-store links |
 | Capital One Shopping | yes | a table of codes on each store page |
-| CouponFollow | yes | each offer's code is base64 of numbers XORed with a key in the site's tracking script (`CF_KEY` in `seed/extract.py`) |
+| CouponFollow | yes | each offer's code is base64 of numbers XORed with a key in the site's tracking script (`CF_KEY` in `10_seed/code/extract.py`) |
 | Coupons.com | yes | store pages embed codes with expiry dates |
 | PromoCodes.com | yes | store pages embed codes |
 | SimplyCodes (also serving Dealspotr and Knoji) | yes | each code's button (`data-code`), kept only where `data-merchant-url` names the page's store |
@@ -53,11 +53,11 @@ robots.txt does not gate the harvest (a standing ruling, 2026-11-08); each site'
 
 Requests go out one at a time an address, 3 s apart (6 s for CouponFollow). SimplyCodes, RetailMeNot, and Groupon refuse
 Python's TLS fingerprint, so they get curl_cffi's Safari one; RetailMeNot runs across 8 egresses and Groupon across 4
-(`--egress`, `--shard`), each writing its own `data/seed_<source>_s<shard>.sqlite`. `tools/egress_grid.py` tests a site
+(`--egress`, `--shard`), each writing its own `10_seed/output/seed_<source>_s<shard>.sqlite`. `10_seed/code/egress_grid.py` tests a site
 through every egress and client.
 
 ## Testing
 
-`sbatch tests/run_tests.sbatch` loads the extension into headless Chromium, then into Firefox (a temporary add-on installed
+`sbatch 20_extension/code/tests/run_tests.sbatch` loads the extension into headless Chromium, then into Firefox (a temporary add-on installed
 through Firefox's remote debugging protocol), and runs three mock checkouts (a WooCommerce
 cart, a generic checkout with a hidden field, and a checkout which reloads on every code) and the share prompt.

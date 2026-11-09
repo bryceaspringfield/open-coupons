@@ -1,5 +1,5 @@
 .temp/
-data/*.sqlite
+10_seed/output/*.sqlite
 __pycache__/
 *.zip
 *.xpi

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Harvest the coupon codes a source publishes on its store pages, into data/seed_<source>.sqlite.
+"""Harvest the coupon codes a source publishes on its store pages, into 10_seed/output/seed_<source>.sqlite.
 
 Usage: harvest.py SOURCE [--gap S] [--limit N] [--list-only] [--egress NAME --shard I/N]
-With --shard, this copy takes the store pages whose CRC32 falls in shard I of N and writes data/seed_<source>_s<I>.sqlite,
+With --shard, this copy takes the store pages whose CRC32 falls in shard I of N and writes 10_seed/output/seed_<source>_s<I>.sqlite,
 and --egress sends its requests through that egress of ~/.cache/wb_broker/egresses.d/ (one shard an egress address).
 RetailMeNot and Groupon show each code only on request: each code offer on a store page takes one more request.
 Reads the source's sitemap for its store pages, then fetches each page once (resumable: pages already fetched are
@@ -127,7 +127,7 @@ def main():
     PROXY = egress_proxy(a.egress) if a.egress else None
     shard, nshard = map(int, a.shard.split("/"))
 
-    con = sqlite3.connect(f"data/seed_{a.source}" + (f"_s{shard}" if nshard > 1 else "") + ".sqlite")
+    con = sqlite3.connect(f"10_seed/output/seed_{a.source}" + (f"_s{shard}" if nshard > 1 else "") + ".sqlite")
     con.executescript("""
       create table if not exists store_pages (url text primary key, listed real);
       create table if not exists pages_done (url text primary key, status int, fetched real, n_codes int, store_key text);
@@ -143,7 +143,7 @@ def main():
     except AttributeError:
         gap = max(a.gap, GAP_BY_SOURCE.get(a.source, 0))
 
-    first = f"data/seed_{a.source}_s0.sqlite"
+    first = f"10_seed/output/seed_{a.source}_s0.sqlite"
     if nshard > 1 and shard > 0 and not con.execute("select count(*) from store_pages").fetchone()[0] and __import__("os").path.exists(first):
         # Shards share shard 0's store list, since a sitemap fetched through a proxy can fail and leave a shard empty.
         con.executemany("insert or ignore into store_pages values (?, ?)", sqlite3.connect(first).execute("select url, listed from store_pages"))

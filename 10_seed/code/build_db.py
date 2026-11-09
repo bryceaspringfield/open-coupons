@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Merges data/seed_<source>.sqlite (and data/shared_codes.tsv, the codes users chose to share) into one code database.
+"""Merges 10_seed/output/seed_<source>.sqlite (and 10_seed/output/shared_codes.tsv, the codes users chose to share) into one code database.
 
-Writes extension/data/codes.json (bundled with the extension) and site/data/codes.json (read by the search page), and
+Writes 20_extension/code/extension/data/codes.json (bundled with the extension) and 99_overall/writeup/site/data/codes.json (read by the search page), and
 prints one line of counts per source. A store page known only by its slug ("slug:nike") takes the one store key from another
 source whose first label is that slug (nike -> nike.com), else <slug>.com; a slug matching several keys is dropped. Codes past their expiry date are dropped.
 """
@@ -13,7 +13,7 @@ import os
 import re
 import sqlite3
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SOURCE_URLS = {
     "honey": "https://www.joinhoney.com",
     "capital_one_shopping": "https://capitaloneshopping.com",
@@ -50,7 +50,7 @@ def css_only(sel):
 def selectors():
     """Store -> {input, apply, total}, from the selectors Honey publishes on its store pages."""
     out = collections.defaultdict(dict)
-    path = os.path.join(ROOT, "data", "seed_honey.sqlite")
+    path = os.path.join(ROOT, "10_seed", "output", "seed_honey.sqlite")
     if os.path.exists(path):
         for key, name, value in sqlite3.connect(path).execute("select store_key, name, value from selectors"):
             v = css_only(value) if name in HONEY_SEL else None
@@ -62,7 +62,7 @@ def selectors():
 def main():
     today = datetime.date.today().isoformat()
     rows, stats = [], collections.Counter()
-    for path in sorted(glob.glob(os.path.join(ROOT, "data", "seed_*.sqlite"))):
+    for path in sorted(glob.glob(os.path.join(ROOT, "10_seed", "output", "seed_*.sqlite"))):
         src = re.match(r"seed_(.+?)(?:_s\d+)?\.sqlite", os.path.basename(path)).group(1)
         con = sqlite3.connect(path)
         for key, code, desc, page, seen, extra in con.execute("select store_key, code, description, page_url, seen, extra from codes"):
@@ -72,7 +72,7 @@ def main():
                 continue
             rows.append((src, key, code, desc, seen))
         con.close()
-    shared = os.path.join(ROOT, "data", "shared_codes.tsv")
+    shared = os.path.join(ROOT, "10_seed", "output", "shared_codes.tsv")
     if os.path.exists(shared):
         for line in open(shared):
             parts = line.rstrip("\n").split("\t")
@@ -114,7 +114,7 @@ def main():
     db = {"generated": today, "stores": len(domains), "codes": n_codes,
           "sources": {s: SOURCE_URLS.get(s, s) for s in sorted({r[0] for r in rows})}, "domains": domains,
           "selectors": {k: v for k, v in sel.items() if k in domains}}
-    for out in ("extension/data/codes.json", "site/data/codes.json"):
+    for out in ("20_extension/code/extension/data/codes.json", "99_overall/writeup/site/data/codes.json"):
         p = os.path.join(ROOT, out)
         tmp = p + ".tmp"
         with open(tmp, "w") as f:
@@ -124,7 +124,7 @@ def main():
     for src in sorted({s for s, _ in stats}):
         print(src, {k: v for (s, k), v in stats.items() if s == src})
     print(f"selectors for {len(db['selectors'])} stores")
-    print(f"database: {len(domains)} stores, {n_codes} codes, {os.path.getsize(os.path.join(ROOT, 'site/data/codes.json'))} bytes")
+    print(f"database: {len(domains)} stores, {n_codes} codes, {os.path.getsize(os.path.join(ROOT, '99_overall/writeup/site/data/codes.json'))} bytes")
 
 
 if __name__ == "__main__":
