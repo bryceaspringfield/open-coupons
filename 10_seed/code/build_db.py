@@ -116,7 +116,7 @@ def main():
           "selectors": {k: v for k, v in sel.items() if k in domains}}
     for out in ("20_extension/code/extension/data/codes.json", "99_overall/writeup/site/data/codes.json"):
         p = os.path.join(ROOT, out)
-        tmp = p + ".tmp"
+        tmp = f"{p}.{os.getpid()}.tmp"  # one name per process, since harvest shards ending together run build_db at once
         with open(tmp, "w") as f:
             json.dump(db, f, separators=(",", ":"), ensure_ascii=False)
         if os.path.getsize(tmp) > 0:
